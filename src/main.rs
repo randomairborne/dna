@@ -1,27 +1,70 @@
-use std::fmt::Display;
+use argh::FromArgs;
+
+#[derive(FromArgs)]
+/// Transcribe and translate DNA codons
+struct Args {
+    /// whether or not to transcribe before translation
+    #[argh(switch, short = 'd')]
+    dna: bool,
+    /// whether or not to show full names of amino acids
+    #[argh(switch, short = 'f')]
+    full: bool,
+    /// whether or not to show single letters
+    #[argh(switch, short = 'l')]
+    single: bool,
+    /// file to transcribe and translate
+    #[argh(positional)]
+    file: Option<String>,
+}
 
 fn main() {
+    let args: Args = argh::from_env();
+    let mapper = if args.dna {
+        Codon::from_dna_char
+    } else {
+        Codon::from_rna_char
+    };
+    if let Some(file) = args.file {
+        let data = std::fs::read_to_string(file).expect("Failed to read file");
+        let protein = Protein::new(data, mapper);
+        println!("{}", protein.to_chars());
+    };
     loop {
-        let mut sin = String::new();
-        std::io::stdin().read_line(&mut sin).unwrap();
-        let mapper = match std::env::args().nth(1) {
-            None => Codon::from_dna_char,
-            Some(v) => match v.as_str() {
-                "--dna" => Codon::from_dna_char,
-                "--rna" => Codon::from_rna_char,
-                _ => panic!("Argument 1 must be `--dna` or `--rna`, got {v}!"),
-            },
-        };
-        let codons: Vec<Codon> = sin
+        let mut data = String::new();
+        std::io::stdin().read_line(&mut data).unwrap();
+        let protein = Protein::new(data, mapper);
+        println!("{}", protein.to_chars());
+    }
+}
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct Protein {
+    amino_acids: Vec<AminoAcid>,
+}
+
+impl Protein {
+    pub fn new(data: String, mapper: fn(char) -> Codon) -> Self {
+        let codons: Vec<Codon> = data
             .chars()
             .filter(|c| !c.is_whitespace())
             .map(mapper)
             .collect();
-        let protein: Vec<AminoAcid> = codons
+        let amino_acids = codons
             .chunks_exact(3)
             .map(|c| AminoAcid::from_codons(c[0], c[1], c[2]))
             .collect();
-        println!("{protein:?}");
+        Self { amino_acids }
+    }
+    pub fn to_chars(&self) -> String {
+        self.amino_acids.iter().map(AminoAcid::to_codon_char).collect()
+    }
+    pub fn to_names(&self) -> Vec<String> {
+        self.amino_acids.iter().map(ToString::to_string).collect()
+    }
+    pub fn to_abbreviations(&self) -> Vec<String> {
+        self.amino_acids
+            .iter()
+            .map(AminoAcid::to_abbreviation)
+            .collect()
     }
 }
 
@@ -54,7 +97,7 @@ impl Codon {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum AminoAcid {
     Alanine,
     Glycine,
@@ -79,36 +122,61 @@ enum AminoAcid {
     Stop,
 }
 
-impl Display for AminoAcid {
+impl std::fmt::Display for AminoAcid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let out = match self {
-            AminoAcid::Alanine => "Ala",
-            AminoAcid::Glycine => "Gly",
-            AminoAcid::Methionine => "Met",
-            AminoAcid::Serine => "Ser",
-            AminoAcid::Cysteine => "Cys",
-            AminoAcid::Hisitidine => "His",
-            AminoAcid::Asparagine => "Asn",
-            AminoAcid::Threonine => "Thr",
-            AminoAcid::AsparticAcid => "Asp",
-            AminoAcid::Isoleucine => "Ile",
-            AminoAcid::Proline => "Pro",
-            AminoAcid::Valine => "Val",
-            AminoAcid::GlutamicAcid => "Glu",
-            AminoAcid::Lysine => "Lys",
-            AminoAcid::Glutamine => "Gln",
-            AminoAcid::Tryptophan => "Trp",
-            AminoAcid::Phenylalanine => "Phe",
-            AminoAcid::Leucine => "Leu",
-            AminoAcid::Arginine => "Arg",
-            AminoAcid::Tyrosine => "Tyr",
-            AminoAcid::Stop => "■",
+            Self::Alanine => "Alanine",
+            Self::Glycine => "Glycine",
+            Self::Methionine => "Methionine",
+            Self::Serine => "Serine",
+            Self::Cysteine => "Cysteine",
+            Self::Hisitidine => "Hisitidine",
+            Self::Asparagine => "Asparagine",
+            Self::Threonine => "Threonine",
+            Self::AsparticAcid => "Aspartic acid",
+            Self::Isoleucine => "Isoleucine",
+            Self::Proline => "Proline",
+            Self::Valine => "Valine",
+            Self::GlutamicAcid => "Glutamic acid",
+            Self::Lysine => "Lysine",
+            Self::Glutamine => "Glutamine",
+            Self::Tryptophan => "Tryptophan",
+            Self::Phenylalanine => "Phenylalanine",
+            Self::Leucine => "Leucine",
+            Self::Arginine => "Arginine",
+            Self::Tyrosine => "Tyrosine",
+            Self::Stop => "■",
         };
         f.write_str(out)
     }
 }
 
 impl AminoAcid {
+    pub fn to_abbreviation(&self) -> String {
+        match self {
+            Self::Alanine => "Ala",
+            Self::Glycine => "Gly",
+            Self::Methionine => "Met",
+            Self::Serine => "Ser",
+            Self::Cysteine => "Cys",
+            Self::Hisitidine => "His",
+            Self::Asparagine => "Asn",
+            Self::Threonine => "Thr",
+            Self::AsparticAcid => "Asp",
+            Self::Isoleucine => "Ile",
+            Self::Proline => "Pro",
+            Self::Valine => "Val",
+            Self::GlutamicAcid => "Glu",
+            Self::Lysine => "Lys",
+            Self::Glutamine => "Gln",
+            Self::Tryptophan => "Trp",
+            Self::Phenylalanine => "Phe",
+            Self::Leucine => "Leu",
+            Self::Arginine => "Arg",
+            Self::Tyrosine => "Tyr",
+            Self::Stop => "■",
+        }.to_string()
+    }
     pub fn to_codon_char(&self) -> char {
         match self {
             AminoAcid::Alanine => 'A',
