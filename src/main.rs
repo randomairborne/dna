@@ -2,7 +2,7 @@ use argh::FromArgs;
 
 #[derive(FromArgs)]
 /// Transcribe and translate DNA codons
-struct Args {
+pub struct Args {
     /// whether or not to transcribe before translation
     #[argh(switch, short = 'd')]
     dna: bool,
@@ -10,7 +10,7 @@ struct Args {
     #[argh(switch, short = 'f')]
     full: bool,
     /// whether or not to show single letters
-    #[argh(switch, short = 'l')]
+    #[argh(switch, short = 's')]
     single: bool,
     /// file to transcribe and translate
     #[argh(positional)]
@@ -24,18 +24,19 @@ fn main() {
     } else {
         Codon::from_rna_char
     };
-    if let Some(file) = args.file {
+    if let Some(file) = &args.file {
         let data = std::fs::read_to_string(file).expect("Failed to read file");
         let protein = Protein::new(data, mapper);
-        println!("{}", protein.to_chars());
+        protein.print(&args);
     };
     loop {
         let mut data = String::new();
         std::io::stdin().read_line(&mut data).unwrap();
         let protein = Protein::new(data, mapper);
-        println!("{}", protein.to_chars());
+        protein.print(&args);
     }
 }
+
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Protein {
     amino_acids: Vec<AminoAcid>,
@@ -48,6 +49,9 @@ impl Protein {
             .filter(|c| !c.is_whitespace())
             .map(mapper)
             .collect();
+        if codons.len() % 3 != 0 {
+            panic!("codon list not divisible by 3!");
+        }
         let amino_acids = codons
             .chunks_exact(3)
             .map(|c| AminoAcid::from_codons(c[0], c[1], c[2]))
@@ -55,7 +59,10 @@ impl Protein {
         Self { amino_acids }
     }
     pub fn to_chars(&self) -> String {
-        self.amino_acids.iter().map(AminoAcid::to_codon_char).collect()
+        self.amino_acids
+            .iter()
+            .map(AminoAcid::to_codon_char)
+            .collect()
     }
     pub fn to_names(&self) -> Vec<String> {
         self.amino_acids.iter().map(ToString::to_string).collect()
@@ -65,6 +72,33 @@ impl Protein {
             .iter()
             .map(AminoAcid::to_abbreviation)
             .collect()
+    }
+    pub fn print(&self, args: &Args) {
+        if args.full {
+            let mut started = false;
+            for acid in self.to_names() {
+                if !started {
+                    started = true;
+                } else {
+                    print!(", ");
+                }
+                print!("{acid}");
+            }
+            println!();
+        } else if args.single {
+            println!("{}", self.to_chars());
+        } else {
+            let mut started = false;
+            for acid in self.to_abbreviations() {
+                if !started {
+                    started = true;
+                } else {
+                    print!(", ");
+                }
+                print!("{acid}");
+            }
+            println!();
+        }
     }
 }
 
@@ -175,7 +209,8 @@ impl AminoAcid {
             Self::Arginine => "Arg",
             Self::Tyrosine => "Tyr",
             Self::Stop => "■",
-        }.to_string()
+        }
+        .to_string()
     }
     pub fn to_codon_char(&self) -> char {
         match self {
